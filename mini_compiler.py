@@ -37,6 +37,14 @@ class CodeGen(Transformer):
         block = self.func.append_basic_block(name="entry")
         self.builder = ir.IRBuilder(block)
 
+        #Declare printf function
+        printf_type = ir.FunctionType(ir.IntType(32), [ir.PointerType(ir.IntType(8))], var_arg=True)
+        self.printf = ir.Function(self.module, printf_type, name="printf")
+
+        # Create a global string format for printing integers
+        self.fmt_str = ir.GlobalVariable(self.module, ir.ArrayType(ir.IntType(8), 4), name="fmt_str")
+        self.fmt_str.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), 4), bytearray("%d\n\0", "utf8"))
+
     # Default transformer to unwrap nodes with a single child.
     def __default__(self, data, children, meta):
         if len(children) == 1:
@@ -49,22 +57,10 @@ class CodeGen(Transformer):
 
     def print_stmt(self, args):
         value = args[0]
-        printf_ty = ir.FunctionType(ir.IntType(32), [ir.PointerType(ir.IntType(8))], var_arg=True)
-        printf = ir.Function(self.module, printf_ty, name="printf")
-        
-        # Create format string for printing integers
-        format_str = "%d\n\0"
-        format_str_global = ir.GlobalVariable(self.module, ir.ArrayType(ir.IntType(8), len(format_str)), name="format_str")
-        format_str_global.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), len(format_str)), bytearray(format_str.encode("utf8")))
-        format_str_global.global_constant = True
-        
-        # Get pointer to the format string
-        fmt_ptr = self.builder.gep(format_str_global, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)])
-        
-        # Call printf
-        self.builder.call(printf, [fmt_ptr, value])
+        fmt_ptr = self.builder.bitcast(self.fmt_str, ir.PointerType(ir.IntType(8)))
+        self.builder.call(self.printf, [fmt_ptr, value])
         return value
-
+    
     def assign_stmt(self, args):
         var_name = str(args[0])
         value = args[1]
@@ -130,7 +126,7 @@ if __name__ == "__main__":
     sample_code = "x = 5 + 3; print x;"
     compiled_ir = compile_code(sample_code)
     print("Generated LLVM IR:\n", compiled_ir)
-    execute_ir(compiled_ir)
+
 
     # Execute the compiled code
     print("\nExecuting LLVM IR...")
