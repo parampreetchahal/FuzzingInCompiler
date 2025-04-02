@@ -131,3 +131,8 @@ if __name__ == "__main__":
     compiled_ir = compile_code(sample_code)
     print("Generated LLVM IR:\n", compiled_ir)
     execute_ir(compiled_ir)
+
+    # Execute the compiled code
+    print("\nExecuting LLVM IR...")
+    result = execute_ir(compiled_ir)
+    print("Execution finished with return value:", result)
