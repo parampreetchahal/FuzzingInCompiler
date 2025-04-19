@@ -7,6 +7,7 @@ grammar = """
     start: stmt+
     stmt: "print" expr ";"       -> print_stmt
         | NAME "=" expr ";"      -> assign_stmt
+        | "input" NAME ";"       -> input_stmt
     expr: expr "+" term          -> add
         | expr "-" term          -> sub
         | term
@@ -41,9 +42,16 @@ class CodeGen(Transformer):
         printf_type = ir.FunctionType(ir.IntType(32), [ir.PointerType(ir.IntType(8))], var_arg=True)
         self.printf = ir.Function(self.module, printf_type, name="printf")
 
-        # Create a global string format for printing integers
+        #Declare scanf function
+        scanf_type = ir.FunctionType(ir.IntType(32), [ir.PointerType(ir.IntType(8))], var_arg=True)
+        self.scanf = ir.Function(self.module, scanf_type, name="scanf")
+
+        # Create global strings for I/O
         self.fmt_str = ir.GlobalVariable(self.module, ir.ArrayType(ir.IntType(8), 4), name="fmt_str")
         self.fmt_str.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), 4), bytearray("%d\n\0", "utf8"))
+
+        self.scanf_str = ir.GlobalVariable(self.module, ir.ArrayType(ir.IntType(8), 3), name="scanf_str")
+        self.scanf_str.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), 3), bytearray("%d\0", "utf8"))
 
     # Default transformer to unwrap nodes with a single child.
     def __default__(self, data, children, meta):
@@ -60,6 +68,14 @@ class CodeGen(Transformer):
         fmt_ptr = self.builder.bitcast(self.fmt_str, ir.PointerType(ir.IntType(8)))
         self.builder.call(self.printf, [fmt_ptr, value])
         return value
+    
+    def input_stmt(self, args):
+        var_name = args[0]
+        ptr = self.builder.alloca(ir.IntType(32), name=var_name)
+        self.symbols[var_name] = ptr
+        fmt_ptr = self.builder.bitcast(self.scanf_str, ir.PointerType(ir.IntType(8)))
+        self.builder.call(self.scanf, [fmt_ptr, ptr])
+        return ptr
     
     def assign_stmt(self, args):
         var_name = str(args[0])
@@ -123,10 +139,12 @@ def execute_ir(ir_code):
     main_func()
 
 if __name__ == "__main__":
-    sample_code = "x = 5 + 3; print x;"
+    sample_code = """
+    input x;
+    print x;
+    """
     compiled_ir = compile_code(sample_code)
     print("Generated LLVM IR:\n", compiled_ir)
-
 
     # Execute the compiled code
     print("\nExecuting LLVM IR...")
