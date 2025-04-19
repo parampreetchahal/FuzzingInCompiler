@@ -33,7 +33,7 @@ class CodeGen(Transformer):
         self.symbols = {}  # Store variable allocations
 
         # Create main function
-        func_type = ir.FunctionType(ir.VoidType(), [], False)
+        func_type = ir.FunctionType(ir.IntType(32), [], False)
         self.func = ir.Function(self.module, func_type, name="main")
         block = self.func.append_basic_block(name="entry")
         self.builder = ir.IRBuilder(block)
@@ -60,7 +60,7 @@ class CodeGen(Transformer):
         return children
 
     def start(self, stmts):
-        self.builder.ret_void()  # End function
+        self.builder.ret(ir.Constant(ir.IntType(32), 0))  # End function
         return self.module
 
     def print_stmt(self, args):
@@ -95,6 +95,30 @@ class CodeGen(Transformer):
         return self.builder.mul(args[0], args[1])
 
     def div(self, args):
+        dividend, divisor = args
+
+    # Check if divisor is zero
+        zero = ir.Constant(ir.IntType(32), 0)
+        is_zero = self.builder.icmp_unsigned("==", divisor, zero)
+
+        # Create blocks for handling the error
+        error_block = self.func.append_basic_block(name="div_by_zero")
+        continue_block = self.func.append_basic_block(name="continue")
+
+        # Branch based on the condition
+        self.builder.cbranch(is_zero, error_block, continue_block)
+
+        # Error block (print message and exit)
+        self.builder.position_at_end(error_block)
+        error_msg = ir.GlobalVariable(self.module, ir.ArrayType(ir.IntType(8), 25), name="error_msg")
+        error_msg.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), 25), bytearray("Error: Division by zero\n\0", "utf8"))
+
+        error_ptr = self.builder.bitcast(error_msg, ir.PointerType(ir.IntType(8)))
+        self.builder.call(self.printf, [error_ptr])
+        self.builder.ret(ir.Constant(ir.IntType(32), -1))  # Exit with error code
+
+        # Continue block (perform division)
+        self.builder.position_at_end(continue_block)
         return self.builder.sdiv(args[0], args[1])
 
     def number(self, args):
@@ -134,13 +158,14 @@ def execute_ir(ir_code):
     # Look up the 'main' function and execute
     func_ptr = engine.get_function_address("main")
     import ctypes
-    main_func = ctypes.CFUNCTYPE(None)(func_ptr)
+    main_func = ctypes.CFUNCTYPE(ctypes.c_int)(func_ptr)
     print("\nExecution Output:")
     main_func()
 
 if __name__ == "__main__":
     sample_code = """
     input x;
+    x=10/x;
     print x;
     """
     compiled_ir = compile_code(sample_code)
