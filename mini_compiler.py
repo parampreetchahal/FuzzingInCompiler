@@ -132,7 +132,11 @@ class CodeGen(Transformer):
 
 # Compile input code
 def compile_code(code):
-    tree = parser.parse(code)
+    try:
+        tree = parser.parse(code)
+    except Exception as e:
+        raise SyntaxError(f"Syntax error: {e}")
+
     codegen = CodeGen()
     llvm_ir = codegen.transform(tree)
     return llvm_ir
